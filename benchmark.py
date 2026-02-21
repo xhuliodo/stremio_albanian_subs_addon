@@ -11,13 +11,13 @@ import srt
 # os.environ["OPENBLAS_NUM_THREADS"] = "4"
 # os.environ["MKL_NUM_THREADS"] = "4"
 
-import torch
-from transformers import MarianMTModel, MarianTokenizer
+import ctranslate2
+from transformers import AutoTokenizer
 
 print("Loading AI Model...")
 model_name = "Helsinki-NLP/opus-mt-en-sq"
-tokenizer = MarianTokenizer.from_pretrained(model_name)
-model = MarianMTModel.from_pretrained(model_name)
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+translator = ctranslate2.Translator("opus-mt-en-sq-ct2", compute_type="int8")
 
 
 def get_cpu_temp():
@@ -88,17 +88,20 @@ for srt_file in srt_files:
     for i in range(0, len(subtitle_texts), batch_size):
         batch = subtitle_texts[i : i + batch_size]
 
-        # ADDED TRUNCATION and max_length to prevent OOM on malformed long lines
-        inputs = tokenizer(
-            batch, return_tensors="pt", padding=True, truncation=True, max_length=128
-        )
+        # 1. Tokenize text into words/subwords
+        source = [
+            tokenizer.convert_ids_to_tokens(tokenizer.encode(text)) for text in batch
+        ]
 
-        # CRITICAL: torch.no_grad() prevents PyTorch from storing massive memory trees
-        with torch.no_grad():
-            outputs = model.generate(**inputs)
+        # 2. Translate using the ultra-fast C++ engine
+        results = translator.translate_batch(source)
 
-        translations = tokenizer.batch_decode(outputs, skip_special_tokens=True)
-        translated_texts.extend(translations)
+        # 3. Decode back into readable strings
+        for result in results:
+            target_ids = tokenizer.convert_tokens_to_ids(result.hypotheses[0])
+            translated_texts.append(
+                tokenizer.decode(target_ids, skip_special_tokens=True)
+            )
 
     elapsed = time.time() - start_time
     total_lines += len(subtitle_texts)
