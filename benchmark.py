@@ -5,10 +5,10 @@ import time
 import srt
 from transformers import MarianMTModel, MarianTokenizer
 
-# Limit to 4 threads (Raspberry Pi 5 has 4 cores)
-os.environ["OMP_NUM_THREADS"] = "4"
-os.environ["OPENBLAS_NUM_THREADS"] = "4"
-os.environ["MKL_NUM_THREADS"] = "4"
+# LIMITING THREADS TO SIMULATE RASPBERRY PI 5 PERFORMANCE
+# os.environ["OMP_NUM_THREADS"] = "4"
+# os.environ["OPENBLAS_NUM_THREADS"] = "4"
+# os.environ["MKL_NUM_THREADS"] = "4"
 
 import torch
 torch.set_num_threads(4)
@@ -17,7 +17,7 @@ device = torch.device("cpu")
 print("Loading AI Model...")
 model_name = "Helsinki-NLP/opus-mt-en-sq"
 tokenizer = MarianTokenizer.from_pretrained(model_name)
-model = MarianMTModel.from_pretrained(model_name).to(device) # type: ignore
+model = MarianMTModel.from_pretrained(model_name)
 
 # Configuration
 benchmark_folder = "./benchmark"
