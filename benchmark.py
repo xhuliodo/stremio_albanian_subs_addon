@@ -4,17 +4,15 @@ import re
 import subprocess
 import time
 import srt
-from transformers import MarianMTModel, MarianTokenizer
 
 # LIMITING THREADS TO SIMULATE RASPBERRY PI 5 PERFORMANCE
+# CRITICAL: Set these BEFORE importing torch or transformers
 # os.environ["OMP_NUM_THREADS"] = "4"
 # os.environ["OPENBLAS_NUM_THREADS"] = "4"
 # os.environ["MKL_NUM_THREADS"] = "4"
 
 import torch
-
-torch.set_num_threads(4)
-device = torch.device("cpu")
+from transformers import MarianMTModel, MarianTokenizer
 
 print("Loading AI Model...")
 model_name = "Helsinki-NLP/opus-mt-en-sq"
@@ -32,7 +30,7 @@ def get_cpu_temp():
         return None
 
 
-def wait_for_cooldown(max_temp=75, check_interval=300):
+def wait_for_cooldown(max_temp=75, check_interval=30):
     """Sleep until temp drops below max_temp"""
     while True:
         temp = get_cpu_temp()
@@ -42,7 +40,7 @@ def wait_for_cooldown(max_temp=75, check_interval=300):
         if temp < max_temp:
             print(f"  Temperature OK: {temp}°C\n")
             break
-        print(f"  Temperature too high: {temp}°C. Sleeping 5 min...")
+        print(f"  Temperature too high: {temp}°C. Sleeping 30 seconds...")
         time.sleep(check_interval)
 
 
@@ -50,8 +48,10 @@ def wait_for_cooldown(max_temp=75, check_interval=300):
 benchmark_folder = "./benchmark"
 translated_folder = Path(benchmark_folder) / "translated"
 translated_folder.mkdir(exist_ok=True)
-batch_size = 32
-temp_threshold = 75  # Start cooldown at 75°C
+
+# REDUCED BATCH SIZE for Raspberry Pi
+batch_size = 4
+temp_threshold = 75
 
 # Get all .srt files
 srt_files = sorted(Path(benchmark_folder).glob("*.srt"))
@@ -75,12 +75,10 @@ for srt_file in srt_files:
     file_type = match.group(1)
     file_id = match.group(2)
 
-    # Read and parse subtitle file
     with open(srt_file, "r", encoding="utf-8") as f:
         subtitles = list(srt.parse(f.read()))
 
     subtitle_texts = [sub.content for sub in subtitles]
-
     print(f"{file_type}_{file_id}: {len(subtitle_texts)} lines")
 
     start_time = time.time()
@@ -89,8 +87,16 @@ for srt_file in srt_files:
     translated_texts = []
     for i in range(0, len(subtitle_texts), batch_size):
         batch = subtitle_texts[i : i + batch_size]
-        inputs = tokenizer(batch, return_tensors="pt", padding=True)
-        outputs = model.generate(**inputs)
+
+        # ADDED TRUNCATION and max_length to prevent OOM on malformed long lines
+        inputs = tokenizer(
+            batch, return_tensors="pt", padding=True, truncation=True, max_length=128
+        )
+
+        # CRITICAL: torch.no_grad() prevents PyTorch from storing massive memory trees
+        with torch.no_grad():
+            outputs = model.generate(**inputs)
+
         translations = tokenizer.batch_decode(outputs, skip_special_tokens=True)
         translated_texts.extend(translations)
 
@@ -98,12 +104,10 @@ for srt_file in srt_files:
     total_lines += len(subtitle_texts)
     total_time += elapsed
 
-    # Update subtitles with translations
     for sub, translation in zip(subtitles, translated_texts):
         sub.content = translation
 
-    # Save translated file
-    output_file = srt_file.parent / f"translated/{file_type}_{file_id}_helsinki.srt"
+    output_file = translated_folder / f"{file_type}_{file_id}_helsinki.srt"
     with open(output_file, "w", encoding="utf-8") as f:
         f.write(srt.compose(subtitles))
 
