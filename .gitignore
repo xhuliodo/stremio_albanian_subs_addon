@@ -1,4 +1,9 @@
 .venv/
 __pycache__/
 *.pyc
-*_trans.srt
+benchmark/translated/
+cache/*
+!cache/not_found.srt
+logs/
+.DS_Store
+.env
