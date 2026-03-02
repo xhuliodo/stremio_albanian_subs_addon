@@ -3,8 +3,12 @@ import re
 import subprocess
 import time
 import srt
-
 from translation import translate_background_task
+from logger import setup_logger
+
+setup_logger()
+from loguru import logger
+
 
 # Configuration
 BENCHMARK_FOLDER = "./benchmark"
@@ -30,12 +34,12 @@ def wait_for_cooldown(max_temp=75, check_interval=30):
     while True:
         temp = get_cpu_temp()
         if temp is None:
-            print("  Warning: Could not read temperature")
+            logger.warning("Could not read temperature")
             break
         if temp < max_temp:
-            print(f"  Temperature OK: {temp}°C\n")
+            logger.info(f"Temperature OK: {temp}°C")
             break
-        print(f"  Temperature too high: {temp}°C. Sleeping 30 seconds...")
+        logger.warning(f"Temperature too high: {temp}°C. Sleeping 30 seconds...")
         time.sleep(check_interval)
 
 
@@ -43,10 +47,10 @@ def wait_for_cooldown(max_temp=75, check_interval=30):
 srt_files = sorted(Path(BENCHMARK_FOLDER).glob("*.srt"))
 
 if not srt_files:
-    print(f"No .srt files found in {BENCHMARK_FOLDER}")
+    logger.error(f"No .srt files found in {BENCHMARK_FOLDER}")
     exit()
 
-print(f"Found {len(srt_files)} subtitle files\n")
+logger.info(f"Found {len(srt_files)} subtitle files\n")
 
 total_lines = 0
 total_time = 0
@@ -55,7 +59,7 @@ for srt_file in srt_files:
     # Parse filename: {tv/mov}_{id}.srt
     match = re.match(r"(tv|mov)_(\d+)\.srt", srt_file.name)
     if not match:
-        print(f"Skipping {srt_file.name} - invalid naming pattern")
+        logger.warning(f"Skipping {srt_file.name} - invalid naming pattern")
         continue
 
     with open(srt_file, "r", encoding="utf-8") as f:
@@ -74,17 +78,19 @@ for srt_file in srt_files:
     total_lines += len(subtitles)
     total_time += elapsed
 
-    print(f" Translated in {elapsed:.2f}s " f"({len(subtitles)/elapsed:.1f} lines/s)\n")
+    logger.info(
+        f"Translated in {elapsed:.2f}s " f"({len(subtitles)/elapsed:.1f} lines/s)\n"
+    )
 
     # Check temperature and cool down if needed
     temp = get_cpu_temp()
     if temp:
-        print(f"  Temperature: {temp}°C")
+        logger.info(f"Temperature: {temp}°C")
         if temp >= TEMP_THRESHOLD:
             wait_for_cooldown(TEMP_THRESHOLD)
 
 
-print(f"Total: {total_lines} lines in {total_time:.2f}s")
-print(f"Average lines: {total_lines/30}")
-print(f"Average: {total_lines/total_time:.1f} lines/s")
-print("Benchmark completed!")
+logger.info(f"Total: {total_lines} lines in {total_time:.2f}s")
+logger.info(f"Average lines: {total_lines/30}")
+logger.info(f"Average: {total_lines/total_time:.1f} lines/s")
+logger.info("Benchmark completed!")

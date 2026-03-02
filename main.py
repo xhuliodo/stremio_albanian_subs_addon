@@ -4,7 +4,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from urllib.parse import parse_qs
 from fastapi.staticfiles import StaticFiles
-from loguru import logger
 
 from subtitle_manager import SubtitleManager
 from translation import translate_background_task, translation_executor
@@ -14,16 +13,19 @@ from utils import (
     write_subs_to_cache,
 )
 from dotenv import load_dotenv
+from logger import setup_logger
+
+setup_logger()
+
+from loguru import logger
 
 BATCH_SIZE = 128
 CACHE_DIR = "cache"
-LOG_DIR = "logs"
 AVG_LINE_PER_S = 142.7  # tested on macbook
 
 
 load_dotenv()
 
-logger.add(f"{LOG_DIR}/app.log", rotation="100 MB", retention="30 days", level="INFO")
 
 sub_source_api_key = os.getenv("SUBSOURCE_API_KEY")
 if not sub_source_api_key:
