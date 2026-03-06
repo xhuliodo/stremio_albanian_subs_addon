@@ -1,5 +1,10 @@
+from logger import setup_logger
+
+setup_logger()
+
+from loguru import logger
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from urllib.parse import parse_qs
@@ -13,12 +18,9 @@ from utils import (
     write_subs_to_cache,
 )
 from dotenv import load_dotenv
-from logger import setup_logger
 
-setup_logger()
 
-from loguru import logger
-
+PORT = 8000
 BATCH_SIZE = 128
 CACHE_DIR = "cache"
 AVG_LINE_PER_S = 142.7  # tested on macbook
@@ -52,6 +54,12 @@ app.add_middleware(
 )
 
 
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Global error: {exc}")
+    return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+
+
 @app.get("/manifest.json")
 def manifest():
     return JSONResponse(
@@ -72,7 +80,9 @@ app.mount(f"/{CACHE_DIR}", StaticFiles(directory=CACHE_DIR), name="cache")
 
 
 @app.get("/subtitles/{type}/{id}/{extra}.json")
-def get_subtitles(type: str, id: str, extra: str):
+def get_subtitles(type: str, id: str, extra: str, request: Request):
+    # Get the base URL (e.g., http://192.168.1.50:8000)
+    base_url = f"{request.url.scheme}://{request.url.netloc}"
     # Parse the incoming request to extract IMDb ID, season, episode, and filename
     parts = id.split(":")
     imdb_id = parts[0]
@@ -95,7 +105,7 @@ def get_subtitles(type: str, id: str, extra: str):
                 "subtitles": [
                     {
                         "id": filename,
-                        "url": f"http://127.0.0.1:8000/cache/{filename}",
+                        "url": f"http://0.0.0.0:{PORT}/cache/{filename}",
                         "lang": "sq",
                         "label": "Shqip",
                     }
@@ -118,7 +128,7 @@ def get_subtitles(type: str, id: str, extra: str):
                 "subtitles": [
                     {
                         "id": f"{filename}",
-                        "url": "http://127.0.0.1:8000/cache/not_found.srt",
+                        "url": f"http://0.0.0.0:{PORT}/cache/not_found.srt",
                         "lang": "sq",
                         "label": "Shqip",
                     }
@@ -135,13 +145,14 @@ def get_subtitles(type: str, id: str, extra: str):
     sub_length = len(subtitles)
     temp_sub = generate_temporary_subtitle(sub_length, AVG_LINE_PER_S)
     write_subs_to_cache(CACHE_DIR, filename, temp_sub)
+    write_subs_to_cache(CACHE_DIR, f"original_{filename}", subtitles)
 
     return JSONResponse(
         {
             "subtitles": [
                 {
                     "id": f"{filename}",
-                    "url": f"http://127.0.0.1:8000/cache/{filename}",
+                    "url": f"http://0.0.0.0:{PORT}/cache/{filename}",
                     "lang": "sq",
                     "label": "Shqip",
                 }

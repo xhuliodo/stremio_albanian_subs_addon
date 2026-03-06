@@ -1,13 +1,13 @@
+from logger import setup_logger
+
+setup_logger()
+from loguru import logger
 from pathlib import Path
 import re
 import subprocess
 import time
 import srt
 from translation import translate_background_task
-from logger import setup_logger
-
-setup_logger()
-from loguru import logger
 
 
 # Configuration
@@ -15,8 +15,8 @@ BENCHMARK_FOLDER = "./benchmark"
 translated_folder = Path(BENCHMARK_FOLDER) / "translated"
 translated_folder.mkdir(exist_ok=True)
 
-BATCH_SIZE = 128
-TEMP_THRESHOLD = 75
+BATCH_SIZE = 256
+TEMP_THRESHOLD = 78
 
 
 def get_cpu_temp():
