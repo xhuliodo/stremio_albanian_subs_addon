@@ -15,7 +15,7 @@ BENCHMARK_FOLDER = "./benchmark"
 translated_folder = Path(BENCHMARK_FOLDER) / "translated"
 translated_folder.mkdir(exist_ok=True)
 
-BATCH_SIZE = 256
+BATCH_SIZE = 512
 TEMP_THRESHOLD = 78
 
 

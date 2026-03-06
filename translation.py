@@ -41,8 +41,8 @@ def translate_background_task(
         results = translator.translate_batch(
             source,
             length_penalty=0.8,
-            max_input_length=batch_size,
-            max_decoding_length=batch_size,
+            # max_input_length=batch_size,
+            # max_decoding_length=batch_size,
         )
 
         # 3. Decode back into readable strings
