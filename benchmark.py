@@ -1,4 +1,4 @@
-from logger import setup_logger
+from config import setup_logger
 
 setup_logger()
 from loguru import logger
