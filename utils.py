@@ -1,3 +1,5 @@
+from loguru import logger
+import os
 import datetime
 import srt
 from pathlib import Path
@@ -9,8 +11,21 @@ def change_extension_to_srt(filename: str) -> str:
 
 def write_subs_to_cache(cache_dir: str, filename: str, subtitles: list[srt.Subtitle]):
     output_path = f"{cache_dir}/{filename}"
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write(srt.compose(subtitles))
+    try:
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(srt.compose(subtitles))
+    except Exception as e:
+        logger.error(f"Failed to write subtitle cache file '{output_path}': {e}")
+        raise  # Re-raise so callers know it failed
+
+
+def delete_subs_from_cache(cache_dir: str, filename: str):
+    output_path = f"{cache_dir}/{filename}"
+    try:
+        os.remove(output_path)
+        logger.info(f"File '{output_path}' has been deleted successfully.")
+    except Exception as e:
+        logger.error(f"Failed to delete file at: '{output_path}' with error: {e}")
 
 
 def estimate_translation_time_str(seconds: int):

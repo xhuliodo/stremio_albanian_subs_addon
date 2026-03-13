@@ -103,7 +103,6 @@ class SubSourceProvider:
         path: str,
         params: Optional[Dict[str, Any]] = None,
         stream: bool = False,
-        expect_json: bool = True,
     ) -> requests.Response:
         url = self.api_base_url + path
         for attempt in range(3):  # Max 3 attempts
@@ -145,7 +144,7 @@ class SubSourceProvider:
             except (
                 requests.exceptions.Timeout,
                 requests.exceptions.ConnectionError,
-            ) as e:
+            ):
                 if attempt < 2:
                     backoff = [0.5, 1.5][attempt]
                     logger.warning(
@@ -171,11 +170,7 @@ class SubSourceProvider:
             params["type"] = "movie"
 
         resp = self._request("GET", self.api_search_path, params=params)
-        if resp.status_code in (401, 403):
-            return []
-
         if not resp.ok:
-            print(f"⚠  HTTP {resp.status_code}: {resp.text[0:200]}")  # type: ignore[index]
             return []
 
         try:
@@ -183,13 +178,13 @@ class SubSourceProvider:
         except json.JSONDecodeError:
             return []
 
-        # Response wrapper: { "data": [...] } atau langsung list
         if isinstance(data, list):
             return data
         if isinstance(data, dict):
             return cast(
                 List[Dict[str, Any]], data.get("data") or data.get("items") or []
             )
+
         return []
 
     def _list_subtitles(
@@ -202,12 +197,7 @@ class SubSourceProvider:
         }
 
         resp = self._request("GET", self.api_subtitles_path, params=params)
-
-        if resp.status_code in (401, 403):
-            return []
-
         if not resp.ok:
-            logger.error(f"HTTP {resp.status_code}: {resp.text[0:200]}")  # type: ignore[index]
             return []
 
         try:
@@ -221,22 +211,14 @@ class SubSourceProvider:
             return cast(
                 List[Dict[str, Any]], data.get("data") or data.get("items") or []
             )
+
         return []
 
     def _download_subtitle(self, sub_id: int) -> Optional[bytes]:
         path = self.api_download_path.format(subtitle_id=sub_id)
 
-        try:
-            resp = self._request("GET", path, stream=True, expect_json=False)
-        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-            logger.error(f"Download failed: {e}")
-            return None
-
-        if resp.status_code in (401, 403):
-            return None
-
+        resp = self._request("GET", path, stream=True)
         if not resp.ok:
-            logger.error(f"Download failed: HTTP {resp.status_code}")
             return None
 
         return resp.content
@@ -249,23 +231,17 @@ class SubSourceProvider:
         episode: Optional[int] = None,
     ) -> Optional[List[srt.Subtitle]]:
         # search for the movie/series first to get the internal movie ID
-        try:
-            results = self._search_title(imdb_id, season)
-        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-            print(f"Network error while searching for movie: {e}")
-            return None
+        results = self._search_title(imdb_id, season)
         if not results:
-            print(f'No result for imdb_id:"{imdb_id}".')
+            logger.info(f'No result for imdb_id:"{imdb_id}".')
             return None
 
-        print(f"Search results: {json.dumps(results, indent=2)}")
-
-        try:
-            subtitles = self._list_subtitles(results[0]["movieId"])
-        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-            print(f"Network error when listing subtitles: {e}")
+        movie_id = results[0].get("movieId")
+        if not movie_id:
+            logger.warning("SubSource result missing 'movieId'.")
             return None
 
+        subtitles = self._list_subtitles(movie_id)
         if not subtitles:
             logger.warning("No subtitles found on SubSource.net")
             return None
@@ -286,14 +262,11 @@ class SubSourceProvider:
             best_subs.append(sub)
 
         best_subs.sort(key=score_subtitle, reverse=True)
-        logger.info(f"Best subtitles after scoring: {json.dumps(best_subs, indent=2)}")
-        best_sub = best_subs[0] if best_subs[0]["_score"] > 0 else None
-        logger.info(f"Best subtitle: {json.dumps(best_sub, indent=2)}")
+        best_sub = best_subs[0] if best_subs and best_subs[0]["_score"] > 0 else None
         if not best_sub:
             logger.warning("No suitable subtitle found after scoring.")
             return None
 
-            # --- Download subtitle ---
         try:
             raw_data = self._download_subtitle(best_sub["id"])
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
@@ -314,15 +287,18 @@ class SubSourceProvider:
             # It's a ZIP file
             srt_data = extract_srt_from_zip(raw_data, original_filename)
             if srt_data is None:
-                print("There are no .srt files in the downloaded ZIP.")
+                logger.info("There are no .srt files in the downloaded ZIP.")
                 return None
         else:
             # Assume it's raw SRT content
             srt_data = raw_data
 
-        srt_sub = srt.parse(srt_data.decode("utf-8", errors="replace"))
-
-        return list(srt_sub)
+        try:
+            srt_sub = srt.parse(srt_data.decode("utf-8", errors="replace"))
+            return list(srt_sub)
+        except Exception as e:
+            logger.error(f"Failed to parse SRT content: {e}")
+            return None
 
 
 class SubDlProvider:
@@ -425,12 +401,7 @@ class SubDlProvider:
             params["type"] = "movie"
 
         resp = self._request("GET", self.api_search_url, params=params)
-
-        if resp.status_code in (401, 403):
-            return []
-
         if not resp.ok:
-            logger.error(f"HTTP {resp.status_code}: {resp.text[0:200]}")  # type: ignore[index]
             return []
 
         try:
@@ -447,15 +418,7 @@ class SubDlProvider:
     def _download_subtitle(self, sub_path: str) -> Optional[bytes]:
         url = self.api_download_url + sub_path
 
-        try:
-            resp = self._request("GET", url, stream=True, expect_json=False)
-        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-            logger.error(f"Download failed: {e}")
-            return None
-
-        if resp.status_code in (401, 403):
-            return None
-
+        resp = self._request("GET", url, stream=True, expect_json=False)
         if not resp.ok:
             logger.error(f"Download failed: HTTP {resp.status_code}")
             return None
@@ -469,12 +432,7 @@ class SubDlProvider:
         season: Optional[int] = None,
         episode: Optional[int] = None,
     ) -> Optional[List[srt.Subtitle]]:
-        try:
-            subtitles = self._list_subtitles(imdb_id, season, episode)
-        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-            print(f"Network error when listing subtitles: {e}")
-            return None
-
+        subtitles = self._list_subtitles(imdb_id, season, episode)
         if not subtitles:
             logger.warning("No subtitles found on SubSource.net")
             return None
@@ -489,24 +447,12 @@ class SubDlProvider:
             best_subs.append(sub)
 
         best_subs.sort(key=score_subtitle, reverse=True)
-        logger.info(f"Best subtitles after scoring: {json.dumps(best_subs, indent=2)}")
-        best_sub = best_subs[0] if best_subs[0]["_score"] > 0 else None
-        logger.info(f"Best subtitle: {json.dumps(best_sub, indent=2)}")
+        best_sub = best_subs[0] if best_subs and best_subs[0]["_score"] > 0 else None
         if not best_sub:
             logger.warning("No suitable subtitle found after scoring.")
             return None
 
-            # --- Download subtitle ---
-        try:
-            raw_data = self._download_subtitle(best_sub.get("url"))
-        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-            logger.warning(f"Network error while download: {e}")
-            return None
-
-        if raw_data is None:
-            logger.warning(f"Download subtitle failed.")
-            return None
-
+        raw_data = self._download_subtitle(best_sub.get("url"))
         if not raw_data:
             logger.warning(f"Download returns empty data.")
             return None
@@ -517,88 +463,104 @@ class SubDlProvider:
             # It's a ZIP file
             srt_data = extract_srt_from_zip(raw_data, original_filename)
             if srt_data is None:
-                print("There are no .srt files in the downloaded ZIP.")
+                logger.info("There are no .srt files in the downloaded ZIP.")
                 return None
         else:
             # Assume it's raw SRT content
             srt_data = raw_data
 
-        srt_sub = srt.parse(srt_data.decode("utf-8", errors="replace"))
-
-        return list(srt_sub)
+        try:
+            srt_sub = srt.parse(srt_data.decode("utf-8", errors="replace"))
+            return list(srt_sub)
+        except Exception as e:
+            logger.error(f"Failed to parse SRT content: {e}")
+            return None
 
 
 def score_subtitle(sub: Dict[str, Any]) -> float:
-    original_filename = guessit(sub["original_file_name"])
-    file_name = guessit(sub["file_name"])
+    try:
+        original_filename = guessit(sub["original_file_name"])
+        file_name = guessit(sub["file_name"])
 
-    o_season = original_filename.get("season")
-    o_episode = original_filename.get("episode")
-    season = file_name.get("season")
-    episode = file_name.get("episode")
+        o_season = original_filename.get("season")
+        o_episode = original_filename.get("episode")
+        season = file_name.get("season")
+        episode = file_name.get("episode")
 
-    print(f"guessed original filename: {original_filename}")
-    print(f"guessed subtitle filename: {file_name}")
-    sub_score: float = 0.0
-    # 1. Episode Match (+50/-50)
-    if o_season and o_episode:
-        if o_season == season and o_episode == episode:
-            sub_score += 50.0
-        else:
-            sub_score -= 100.0
+        logger.info(f"guessed original filename: {original_filename}")
+        logger.info(f"guessed subtitle filename: {file_name}")
+        sub_score: float = 0.0
+        # 1. Episode Match (+50/-50)
+        if o_season and o_episode:
+            if o_season == season and o_episode == episode:
+                sub_score += 50.0
+            else:
+                sub_score -= 100.0
 
-    o_title = original_filename.get("title")
-    title = file_name.get("title")
-    if title and o_title and title.lower() == o_title.lower():
-        sub_score += 10.0
+        o_title = original_filename.get("title")
+        title = file_name.get("title")
+        if title and o_title and title.lower() == o_title.lower():
+            sub_score += 10.0
 
-    o_quality = original_filename.get("source")
-    quality = file_name.get("source")
-    # 2. Quality Match (+10)
-    if quality and o_quality and quality.lower() == o_quality.lower():
-        sub_score += 10.0
+        o_quality = original_filename.get("source")
+        quality = file_name.get("source")
+        # 2. Quality Match (+10)
+        if quality and o_quality and quality.lower() == o_quality.lower():
+            sub_score += 10.0
 
-    o_video_codec = original_filename.get("video_codec")
-    video_codec = file_name.get("video_codec")
-    # 3. Codec Match (+10)
-    if video_codec and o_video_codec and video_codec.lower() == o_video_codec.lower():
-        sub_score += 10.0
+        o_video_codec = original_filename.get("video_codec")
+        video_codec = file_name.get("video_codec")
+        # 3. Codec Match (+10)
+        if (
+            video_codec
+            and o_video_codec
+            and video_codec.lower() == o_video_codec.lower()
+        ):
+            sub_score += 10.0
 
-    # 4. Release Group Match (+10)
-    o_release_group = original_filename.get("release_group")
-    release_group = file_name.get("release_group")
-    if (
-        release_group
-        and o_release_group
-        and release_group.lower() == o_release_group.lower()
-    ):
-        sub_score += 10.0
+        # 4. Release Group Match (+10)
+        o_release_group = original_filename.get("release_group")
+        release_group = file_name.get("release_group")
+        if (
+            release_group
+            and o_release_group
+            and release_group.lower() == o_release_group.lower()
+        ):
+            sub_score += 10.0
 
-    # 5. Screen Size Match (+10)
-    o_screen_size = original_filename.get("screen_size")
-    screen_size = file_name.get("screen_size")
-    if screen_size and o_screen_size and screen_size.lower() == o_screen_size.lower():
-        sub_score += 10.0
+        # 5. Screen Size Match (+10)
+        o_screen_size = original_filename.get("screen_size")
+        screen_size = file_name.get("screen_size")
+        if (
+            screen_size
+            and o_screen_size
+            and screen_size.lower() == o_screen_size.lower()
+        ):
+            sub_score += 10.0
 
-    # Tie-breaker: difflib similarity (0 to 1)
-    sim: float = float(
-        difflib.SequenceMatcher(
-            None, sub["original_file_name"].lower(), sub["file_name"].lower()
-        ).ratio()
-    )
+        # Tie-breaker: difflib similarity (0 to 1)
+        sim: float = float(
+            difflib.SequenceMatcher(
+                None, sub["original_file_name"].lower(), sub["file_name"].lower()
+            ).ratio()
+        )
 
-    # Save score for display/debugging
-    final_score: float = sub_score + sim
-    sub["_score"] = final_score
+        # Save score for display/debugging
+        final_score: float = sub_score + sim
+        sub["_score"] = final_score
 
-    return final_score
+        return final_score
+    except Exception as e:
+        logger.warning(f"Score computation failed for {sub}: {e}")
+        sub["_score"] = 0.0
+        return 0.0
 
 
 def extract_srt_from_zip(zip_bytes: bytes, original_filename: str) -> Optional[bytes]:
     try:
         zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
     except zipfile.BadZipFile:
-        print("  ⚠  File ZIP corrupt atau bukan ZIP valid.")
+        logger.error("The ZIP file is corrupt or not a valid ZIP.")
         return None
 
     srt_files = [
