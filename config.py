@@ -6,9 +6,7 @@ from subtitle_manager import SubtitleManager
 
 load_dotenv()
 
-PORT = 8000
-
-BATCH_SIZE = 256
+BATCH_SIZE = 512
 _batch_size = os.getenv("BATCH_SIZE")
 if _batch_size:
     BATCH_SIZE = int(_batch_size)

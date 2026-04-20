@@ -1,7 +1,6 @@
 from config import (
     CACHE_DIR,
     setup_logger,
-    PORT,
     BATCH_SIZE,
     AVG_LINE_PER_S,
     setup_sub_client,
@@ -27,6 +26,8 @@ from utils import (
 subtitles_client = setup_sub_client()
 
 app = FastAPI()
+
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 app.add_middleware(
     CORSMiddleware,
@@ -64,8 +65,8 @@ app.mount(f"/{CACHE_DIR}", StaticFiles(directory=CACHE_DIR), name="cache")
 
 @app.get("/subtitles/{type}/{id}/{extra}.json")
 def get_subtitles(type: str, id: str, extra: str, request: Request):
-    # Get the base URL (e.g., http://192.168.1.50:8000)
-    # base_url = f"{request.url.scheme}://{request.url.netloc}"
+    # Get the base URL (e.g., http://localhost:8000)
+    base_url = f"{request.url.scheme}://{request.url.netloc}"
     # Parse the incoming request to extract IMDb ID, season, episode, and filename
     try:
         parts = id.split(":")
@@ -95,7 +96,7 @@ def get_subtitles(type: str, id: str, extra: str, request: Request):
                 "subtitles": [
                     {
                         "id": filename,
-                        "url": f"http://0.0.0.0:{PORT}/{CACHE_DIR}/{filename}",
+                        "url": f"{base_url}/{CACHE_DIR}/{filename}",
                         "lang": "sq",
                         "label": "Shqip",
                     }
@@ -119,7 +120,7 @@ def get_subtitles(type: str, id: str, extra: str, request: Request):
                 "subtitles": [
                     {
                         "id": f"{filename}",
-                        "url": f"http://0.0.0.0:{PORT}/{CACHE_DIR}/not_found.srt",
+                        "url": f"{base_url}/{CACHE_DIR}/not_found.srt",
                         "lang": "sq",
                         "label": "Shqip",
                     }
@@ -148,7 +149,7 @@ def get_subtitles(type: str, id: str, extra: str, request: Request):
             "subtitles": [
                 {
                     "id": f"{filename}",
-                    "url": f"http://0.0.0.0:{PORT}/{CACHE_DIR}/{filename}",
+                    "url": f"{base_url}/{CACHE_DIR}/{filename}",
                     "lang": "sq",
                     "label": "Shqip",
                 }
