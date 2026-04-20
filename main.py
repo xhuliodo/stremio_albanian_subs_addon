@@ -22,12 +22,16 @@ from utils import (
     generate_temporary_subtitle,
     write_subs_to_cache,
 )
+from prometheus_client import make_asgi_app
+
+import metrics  # ensures all metrics are registered on startup
 
 subtitles_client = setup_sub_client()
 
 app = FastAPI()
 
-app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
+metrics_endpoint = make_asgi_app()
+app.mount("/metrics", metrics_endpoint)
 
 app.add_middleware(
     CORSMiddleware,
@@ -105,12 +109,13 @@ def get_subtitles(type: str, id: str, extra: str, request: Request):
         )
 
     # If not in cache, download and parse the english subtitles
-    subtitles = subtitles_client.download_and_parse(
-        imdb_id=imdb_id,
-        original_filename=filename,
-        season=season,
-        episode=episode,
-    )
+    with metrics.sub_cli_fetch_time.time():
+        subtitles = subtitles_client.download_and_parse(
+            imdb_id=imdb_id,
+            original_filename=filename,
+            season=season,
+            episode=episode,
+        )
 
     # If subtitles are not found, return a JSON response with a "not found" subtitle pointing to a placeholder file
     if subtitles is None:
