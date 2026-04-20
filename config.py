@@ -17,7 +17,7 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 AVG_LINE_PER_S = 142  # tested on macbook
 _avg_line_per_s = os.getenv("AVG_LINE_PER_S")
 if _avg_line_per_s:
-    AVG_LINE_PER_S = int(_avg_line_per_s)
+    AVG_LINE_PER_S = float(_avg_line_per_s)
 
 
 LOG_DIR = "logs"
