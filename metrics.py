@@ -9,3 +9,8 @@ translation_time = Histogram(
     "translation_duration_seconds",
     "Time spent translating subtitles",
 )
+
+thuaji_xhulios = Counter(
+    "thuaji_xhulios",
+    "Number of times the server has failed with a 5XX error.",
+)

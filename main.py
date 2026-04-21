@@ -44,6 +44,7 @@ app.add_middleware(
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Global error: {exc}")
+    metrics.thuaji_xhulios.inc()
     return JSONResponse(status_code=500, content={"error": "Problem, thuaji xhulios"})
 
 
