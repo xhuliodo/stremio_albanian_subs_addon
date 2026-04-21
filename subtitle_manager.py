@@ -487,8 +487,8 @@ def score_subtitle(sub: Dict[str, Any]) -> float:
         season = file_name.get("season")
         episode = file_name.get("episode")
 
-        logger.info(f"guessed original filename: {original_filename}")
-        logger.info(f"guessed subtitle filename: {file_name}")
+        # logger.info(f"guessed original filename: {original_filename}")
+        # logger.info(f"guessed subtitle filename: {file_name}")
         sub_score: float = 0.0
         # 1. Episode Match (+50/-50)
         if o_season and o_episode:
@@ -497,20 +497,30 @@ def score_subtitle(sub: Dict[str, Any]) -> float:
             else:
                 sub_score -= 100.0
 
+        # 2. Title Match — fuzzy similarity (up to +10)
         o_title = original_filename.get("title")
         title = file_name.get("title")
-        if title and o_title and title.lower() == o_title.lower():
+        if title and o_title:
+            title_sim = difflib.SequenceMatcher(
+                None, title.lower(), o_title.lower()
+            ).ratio()
+            sub_score += title_sim * 10.0
+
+        # 3. Year match (+10)
+        o_year = original_filename.get("year")
+        year = file_name.get("year")
+        if o_year and year and o_year == year:
             sub_score += 10.0
 
         o_quality = original_filename.get("source")
         quality = file_name.get("source")
-        # 2. Quality Match (+10)
+        # 4. Quality Match (+10)
         if quality and o_quality and quality.lower() == o_quality.lower():
             sub_score += 10.0
 
         o_video_codec = original_filename.get("video_codec")
         video_codec = file_name.get("video_codec")
-        # 3. Codec Match (+10)
+        # 5. Codec Match (+10)
         if (
             video_codec
             and o_video_codec
@@ -518,7 +528,7 @@ def score_subtitle(sub: Dict[str, Any]) -> float:
         ):
             sub_score += 10.0
 
-        # 4. Release Group Match (+10)
+        # 6. Release Group Match (+10)
         o_release_group = original_filename.get("release_group")
         release_group = file_name.get("release_group")
         if (
@@ -528,7 +538,7 @@ def score_subtitle(sub: Dict[str, Any]) -> float:
         ):
             sub_score += 10.0
 
-        # 5. Screen Size Match (+10)
+        # 7. Screen Size Match (+10)
         o_screen_size = original_filename.get("screen_size")
         screen_size = file_name.get("screen_size")
         if (
@@ -536,6 +546,12 @@ def score_subtitle(sub: Dict[str, Any]) -> float:
             and o_screen_size
             and screen_size.lower() == o_screen_size.lower()
         ):
+            sub_score += 10.0
+
+        # 8. Edition Match (+10)
+        o_edition = original_filename.get("edition")
+        edition = file_name.get("edition")
+        if edition and o_edition and edition == o_edition:
             sub_score += 10.0
 
         # Tie-breaker: difflib similarity (0 to 1)

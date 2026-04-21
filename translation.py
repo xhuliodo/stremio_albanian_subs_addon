@@ -4,7 +4,7 @@ import ctranslate2
 from transformers import AutoTokenizer
 import concurrent.futures
 import metrics
-from utils import delete_subs_from_cache, write_subs_to_cache
+from utils import delete_subs_from_cache, strip_html_tags, write_subs_to_cache
 from loguru import logger
 
 logger.info("Loading AI Model...")
@@ -25,7 +25,7 @@ def translate_background_task(
     try:
         with metrics.translation_time.time():
             # Extract all subtitle text into a list
-            texts = [sub.content for sub in subtitles]
+            texts = [strip_html_tags(sub.content) for sub in subtitles]
 
             # Translate in batches
             translated_texts = []

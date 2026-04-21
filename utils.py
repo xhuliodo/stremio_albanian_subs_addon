@@ -1,3 +1,4 @@
+import re
 from loguru import logger
 import os
 import datetime
@@ -84,3 +85,8 @@ def generate_temporary_subtitle(
     )
 
     return countdown_subs
+
+
+def strip_html_tags(text: str) -> str:
+    """Remove HTML/XML tags from subtitle content."""
+    return re.sub(r"<[^>]+>", "", text).strip()
