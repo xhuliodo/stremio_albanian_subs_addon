@@ -1,3 +1,4 @@
+import sys
 from dotenv import load_dotenv
 from loguru import logger
 import os
@@ -38,12 +39,14 @@ USER_AGENT = os.getenv("USER_AGENT", "albaniansubtitles")
 
 def setup_logger():
     os.makedirs(LOG_DIR, exist_ok=True)
+    logger.remove()
     logger.add(
         f"{LOG_DIR}/app.log",
         rotation="100 MB",
-        retention="30 days",
+        retention="90 days",
         level="INFO",
     )
+    logger.add(sys.stderr, level="INFO")
     logger.info("Logger initialized and writing to logs/app.log")
 
 
