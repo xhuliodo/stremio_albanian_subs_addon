@@ -1,3 +1,4 @@
+from datetime import timedelta
 import textwrap
 import srt
 import ctranslate2
@@ -16,6 +17,29 @@ translator = ctranslate2.Translator("opus-mt-en-sq-ct2", compute_type="int8")
 # This ensures that no matter how many translation requests come in,
 # only 1 will run at a time. The rest will wait in a queue.
 translation_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+
+CHARS_PER_SECOND = 17
+GAP_BUFFER = timedelta(milliseconds=100)
+WRAP_WIDTH = 42
+
+
+def reassemble_subtitles(
+    subtitles: list[srt.Subtitle], translated_texts: list[str]
+) -> None:
+    for i, (sub, translation) in enumerate(zip(subtitles, translated_texts)):
+        current_duration = (sub.end - sub.start).total_seconds()
+        required_duration = len(translation) / CHARS_PER_SECOND
+
+        if required_duration > current_duration:
+            new_end = sub.start + timedelta(seconds=required_duration)
+
+            if i + 1 < len(subtitles):
+                max_end = subtitles[i + 1].start - GAP_BUFFER
+                sub.end = min(new_end, max_end)
+            else:
+                sub.end = new_end
+
+        sub.content = textwrap.fill(translation, width=WRAP_WIDTH)
 
 
 def translate_background_task(
@@ -42,7 +66,7 @@ def translate_background_task(
                 # 2. Translate using the ultra-fast C++ engine
                 results = translator.translate_batch(
                     source,
-                    length_penalty=0.8,
+                    length_penalty=0.6,
                 )
 
                 # 3. Decode back into readable strings
@@ -52,10 +76,7 @@ def translate_background_task(
                         tokenizer.decode(target_ids, skip_special_tokens=True)
                     )
             # Reassemble translated subtitles
-            for sub, translation in zip(subtitles, translated_texts):
-                wrapped_text = textwrap.fill(translation, width=42)
-                sub.content = wrapped_text
-
+            reassemble_subtitles(subtitles, translated_texts)
             # Save to disk
             write_subs_to_cache(cache_dir, filename, subtitles)
 
